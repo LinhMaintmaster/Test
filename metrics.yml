@@ -1,9 +1,0 @@
-# Metrics data for testing
-metric_name: test_summary_v1
-labels:
-  pr_id: "PR-1234"
-  total: "78"
-  passed: "75"
-  failed: "2"
-  skipped: "1"
-value: 1
