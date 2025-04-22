@@ -1,0 +1,40 @@
+name: Send Metrics from YAML
+
+on:
+  push:
+    branches:
+      - main  # or your main branch name
+  workflow_dispatch:  # manual trigger
+
+jobs:
+  send-metrics:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Read YAML and send metrics
+        run: |
+          # Install yq for YAML parsing
+          sudo apt-get install -y python3-pip
+          pip3 install yq
+
+          # Parse the YAML file
+          yaml_file="metrics.yml"
+          pr_id=$(yq e '.labels.pr_id' $yaml_file)
+          total=$(yq e '.labels.total' $yaml_file)
+          passed=$(yq e '.labels.passed' $yaml_file)
+          failed=$(yq e '.labels.failed' $yaml_file)
+          skipped=$(yq e '.labels.skipped' $yaml_file)
+          value=$(yq e '.value' $yaml_file)
+
+          # Construct the Prometheus metric string
+          metric="# HELP ${yaml_file%.*} A test metric\n# TYPE ${yaml_file%.*} counter\n${yaml_file%.*}{pr_id=\"${pr_id}\",total=\"${total}\",passed=\"${passed}\",failed=\"${failed}\",skipped=\"${skipped}\"} ${value}"
+
+          # Send the metric to Pushgateway (replace URL)
+          curl -X POST --data-binary "$metric" http://localhost:9091/metrics/job/playwright_test
+          
+      # (Optional) Print message
+      - name: Done
+        run: echo "Metrics sent!"
