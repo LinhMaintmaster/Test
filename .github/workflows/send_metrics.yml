@@ -21,7 +21,7 @@ jobs:
           pip3 install yq
 
           # Parse the YAML file
-          yaml_file="metrics.yml"
+          yaml_file="../metrics.yml"
           pr_id=$(yq e '.labels.pr_id' $yaml_file)
           total=$(yq e '.labels.total' $yaml_file)
           passed=$(yq e '.labels.passed' $yaml_file)
