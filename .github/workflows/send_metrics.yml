@@ -20,8 +20,13 @@ jobs:
 
       - name: Read JSON and send metrics
         run: |
-          # Path to your JSON file in root directory
-          json_file="../metrics.json"
+          # Show current directory and files for debugging
+          echo "Current directory: $(pwd)"
+          echo "Files in directory:"
+          ls -la
+          
+          # File is in repository root
+          json_file="metrics.json"
 
           # Check if JSON file exists
           if [ ! -f "$json_file" ]; then
@@ -51,7 +56,7 @@ jobs:
           echo "Value: $value"
 
           # Construct the Prometheus metric string
-          metric_name="test_summary_v1"
+          metric_name=$(basename "$json_file" .json)
           metric="# HELP ${metric_name} A test metric\n# TYPE ${metric_name} counter\n${metric_name}{pr_id=\"${pr_id}\",total=\"${total}\",passed=\"${passed}\",failed=\"${failed}\",skipped=\"${skipped}\"} ${value}"
 
           # Debug: show the constructed metric
@@ -59,10 +64,15 @@ jobs:
           echo "$metric"
 
           # Save metric to file
-          echo "$metric" > metric.txt
+          echo -e "$metric" > metric.txt
+
+          # Show created metric file
+          echo "Generated metric file content:"
+          cat metric.txt
 
           # Send to Pushgateway (update URL accordingly)
-          curl -X POST --data-binary @metric.txt http://your-pushgateway-url:9091/metrics/job/playwright_test
+          # curl -X POST --data-binary @metric.txt http://your-pushgateway-url:9091/metrics/job/playwright_test
+          echo "Curl command would be executed here with the above metric"
           
       - name: Done
         run: echo "Metrics sent!"
