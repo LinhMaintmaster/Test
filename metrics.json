@@ -1,6 +1,7 @@
 {
+  "metric_name": "test_summary_v1",
   "labels": {
-    "pr_id": "PR-1234",
+    "pr_id": "PR-1233",
     "total": "78",
     "passed": "75",
     "failed": "2",

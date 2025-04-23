@@ -36,6 +36,7 @@ jobs:
           cat $json_file
 
           # Parse JSON fields with jq
+          metric_name=$(jq -r '.metric_name' $json_file)
           pr_id=$(jq -r '.labels.pr_id' $json_file)
           total=$(jq -r '.labels.total' $json_file)
           passed=$(jq -r '.labels.passed' $json_file)
@@ -45,6 +46,7 @@ jobs:
 
           # Show parsed values
           echo "Parsed values:"
+          echo "Metric Name: $metric_name"
           echo "PR ID: $pr_id"
           echo "Total: $total"
           echo "Passed: $passed"
@@ -53,6 +55,7 @@ jobs:
           echo "Value: $value"
 
           # Set output variables to be used in later steps
+          echo "metric_name=$metric_name" >> $GITHUB_OUTPUT
           echo "pr_id=$pr_id" >> $GITHUB_OUTPUT
           echo "total=$total" >> $GITHUB_OUTPUT
           echo "passed=$passed" >> $GITHUB_OUTPUT
@@ -71,6 +74,7 @@ jobs:
 
       - name: Push metrics to Pushgateway
         env:
+          METRIC_NAME: ${{ steps.metrics.outputs.metric_name }}
           PR_ID: ${{ steps.metrics.outputs.pr_id }}
           TOTAL: ${{ steps.metrics.outputs.total }}
           PASSED: ${{ steps.metrics.outputs.passed }}
@@ -78,10 +82,16 @@ jobs:
           SKIPPED: ${{ steps.metrics.outputs.skipped }}
           VALUE: ${{ steps.metrics.outputs.value }}
         run: |
+          # Use default metric name if not provided
+          if [ -z "$METRIC_NAME" ]; then
+            METRIC_NAME="test_summary_v2"
+            echo "Metric name not provided, using default: $METRIC_NAME"
+          fi
+
           # Push our test metric to Pushgateway with the labels from our metrics
           cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}
-          # TYPE test_summary_l1 gauge
-          test_summary_l1 ${VALUE}
+          # TYPE ${METRIC_NAME} gauge
+          ${METRIC_NAME} ${VALUE}
           EOF
 
           echo "Metrics pushed to Pushgateway"
@@ -114,7 +124,14 @@ jobs:
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
 
       - name: Start Prometheus and send metrics to Grafana Cloud
+        env:
+          METRIC_NAME: ${{ steps.metrics.outputs.metric_name }}
         run: |
+          # Use default metric name if not provided
+          if [ -z "$METRIC_NAME" ]; then
+            METRIC_NAME="test_summary_v2"
+          fi
+
           docker run -d --name prometheus --network host \
             -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
             prom/prometheus:latest \
@@ -132,16 +149,23 @@ jobs:
           docker logs prometheus
 
       - name: Verify metrics were sent
+        env:
+          METRIC_NAME: ${{ steps.metrics.outputs.metric_name }}
         run: |
+          # Use default metric name if not provided
+          if [ -z "$METRIC_NAME" ]; then
+            METRIC_NAME="test_summary_v2"
+          fi
+
           # Check Prometheus targets to ensure Pushgateway is being scraped
           curl -s http://localhost:9090/api/v1/targets | jq .
 
           # Query the metric to ensure it exists in Prometheus
-          RESULT=$(curl -s 'http://localhost:9090/api/v1/query?query=test_summary_v2' | jq -r '.data.result | length')
+          RESULT=$(curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq -r '.data.result | length')
 
           if [ "$RESULT" -gt 0 ]; then
             echo "✅ Metrics successfully available in Prometheus"
-            curl -s 'http://localhost:9090/api/v1/query?query=test_summary_v2' | jq .
+            curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq .
           else
             echo "❌ Metrics not found in Prometheus"
             exit 1
