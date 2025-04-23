@@ -1,4 +1,4 @@
-name: Send Metrics from JSON
+name: Send Metrics to Grafana Cloud via Pushgateway
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
 jobs:
   send-metrics:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -16,15 +17,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq
+          sudo apt-get install -y jq curl
 
-      - name: Read JSON and send metrics
+      - name: Read JSON and prepare metrics
+        id: metrics
         run: |
-          # Show current directory and files for debugging
-          echo "Current directory: $(pwd)"
-          echo "Files in directory:"
-          ls -la
-          
           # File is in repository root
           json_file="metrics.json"
 
@@ -55,24 +52,103 @@ jobs:
           echo "Skipped: $skipped"
           echo "Value: $value"
 
-          # Construct the Prometheus metric string
-          metric_name="test_summary_v2"
-          metric="# HELP ${metric_name} A test metric\n# TYPE ${metric_name} counter\n${metric_name}{pr_id=\"${pr_id}\",total=\"${total}\",passed=\"${passed}\",failed=\"${failed}\",skipped=\"${skipped}\"} ${value}"
+          # Set output variables to be used in later steps
+          echo "pr_id=$pr_id" >> $GITHUB_OUTPUT
+          echo "total=$total" >> $GITHUB_OUTPUT
+          echo "passed=$passed" >> $GITHUB_OUTPUT
+          echo "failed=$failed" >> $GITHUB_OUTPUT
+          echo "skipped=$skipped" >> $GITHUB_OUTPUT
+          echo "value=$value" >> $GITHUB_OUTPUT
 
-          # Debug: show the constructed metric
-          echo "Constructed metric:"
-          echo "$metric"
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
 
-          # Save metric to file
-          echo -e "$metric" > metric.txt
+      - name: Start Pushgateway
+        run: |
+          docker run -d --name pushgateway -p 9091:9091 prom/pushgateway:latest
+          echo "Waiting for Pushgateway to start..."
+          sleep 5
 
-          # Show created metric file
-          echo "Generated metric file content:"
-          cat metric.txt
+      - name: Push metrics to Pushgateway
+        env:
+          PR_ID: ${{ steps.metrics.outputs.pr_id }}
+          TOTAL: ${{ steps.metrics.outputs.total }}
+          PASSED: ${{ steps.metrics.outputs.passed }}
+          FAILED: ${{ steps.metrics.outputs.failed }}
+          SKIPPED: ${{ steps.metrics.outputs.skipped }}
+          VALUE: ${{ steps.metrics.outputs.value }}
+        run: |
+          # Push our test metric to Pushgateway with the labels from our metrics
+          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}
+          # TYPE test_summary_l1 gauge
+          test_summary_l1 ${VALUE}
+          EOF
 
-          # Send to Pushgateway (update URL accordingly)
-          curl -X POST --data-binary @metric.txt http://localhost:9091/metrics/job/playwright_test
-          echo "Curl command would be executed here with the above metric"
-          
-      - name: Done
-        run: echo "Metrics sent!"
+          echo "Metrics pushed to Pushgateway"
+
+      - name: Create Prometheus config
+        run: |
+          cat > prometheus.yml <<EOF
+          global:
+            scrape_interval: 15s
+            evaluation_interval: 15s
+
+          scrape_configs:
+            - job_name: 'pushgateway'
+              honor_labels: true
+              static_configs:
+                - targets: ['localhost:9091']
+
+          remote_write:
+            - url: "${GRAFANA_CLOUD_URL}"
+              basic_auth:
+                username: "${GRAFANA_CLOUD_USER}"
+                password: "${GRAFANA_CLOUD_API_KEY}"
+          EOF
+
+          echo "Prometheus config created:"
+          cat prometheus.yml
+        env:
+          GRAFANA_CLOUD_URL: ${{ secrets.GRAFANA_CLOUD_URL }}
+          GRAFANA_CLOUD_USER: ${{ secrets.GRAFANA_CLOUD_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+
+      - name: Start Prometheus and send metrics to Grafana Cloud
+        run: |
+          docker run -d --name prometheus --network host \
+            -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
+            prom/prometheus:latest \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --web.enable-lifecycle \
+            --log.level=debug
+
+          echo "Prometheus started"
+
+          # Wait for Prometheus to scrape Pushgateway and send to Grafana Cloud
+          echo "Waiting for Prometheus to scrape metrics and send to Grafana Cloud..."
+          sleep 30
+
+          # Show Prometheus logs
+          docker logs prometheus
+
+      - name: Verify metrics were sent
+        run: |
+          # Check Prometheus targets to ensure Pushgateway is being scraped
+          curl -s http://localhost:9090/api/v1/targets | jq .
+
+          # Query the metric to ensure it exists in Prometheus
+          RESULT=$(curl -s 'http://localhost:9090/api/v1/query?query=test_summary_v2' | jq -r '.data.result | length')
+
+          if [ "$RESULT" -gt 0 ]; then
+            echo "✅ Metrics successfully available in Prometheus"
+            curl -s 'http://localhost:9090/api/v1/query?query=test_summary_v2' | jq .
+          else
+            echo "❌ Metrics not found in Prometheus"
+            exit 1
+          fi
+
+      - name: Clean up containers
+        if: always()
+        run: |
+          docker stop prometheus pushgateway || true
+          docker rm prometheus pushgateway || true
