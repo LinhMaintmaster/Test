@@ -1,11 +1,11 @@
 {
-  "metric_name": "test_summary_v1",
+  "metric_name": "test_summary_v2",
   "labels": {
     "pr_id": "PR-1233",
-    "total": "78",
+    "total": "80",
     "passed": "75",
     "failed": "2",
-    "skipped": "1"
+    "skipped": "3"
   },
   "value": 1
 }
