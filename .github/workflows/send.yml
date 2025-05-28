@@ -94,56 +94,30 @@ jobs:
           echo "Waiting for Pushgateway to start..."
           sleep 5
 
-      # Step 5: Push metrics to Pushgateway
+      # Step 6: Push metrics to Pushgateway with labels from the parsed JSON
       - name: Push metrics to Pushgateway
         env:
+          METRIC_NAME: ${{ env.METRIC_NAME}}
           PR_ID: ${{ github.run_id }}
-          PR_TITLE: ${{ github.workflow }}
           TOTAL: ${{ env.TOTAL }}
           PASSED: ${{ env.PASSED }}
           FAILED: ${{ env.FAILED }}
           SKIPPED: ${{ env.SKIPPED }}
-          FLAKY: ${{ env.FLAKY }}
           VALUE: ${{ env.FAILED }}
         run: |
           # Use default metric name if none provided
           if [ -z "$METRIC_NAME" ]; then
-            METRIC_NAME="test_summary_test_v1"
+            METRIC_NAME="test_summary_v2"
             echo "Metric name not provided, using default: $METRIC_NAME"
           fi
 
           # Push metric to Pushgateway following Prometheus format with labels
-          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/pr_title/${PR_TITLE}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}/flaky/${FLAKY}
+          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}
           # TYPE ${METRIC_NAME} gauge
           ${METRIC_NAME} ${VALUE}
           EOF
 
           echo "Metrics pushed to Pushgateway"
-
-      # # Step 6: Push metrics to Pushgateway with labels from the parsed JSON
-      # - name: Push metrics to Pushgateway
-      #   env:
-      #     METRIC_NAME: ${{ steps.metrics.outputs.metric_name }}
-      #     PR_ID: ${{ steps.metrics.outputs.pr_id }}
-      #     TOTAL: ${{ steps.metrics.outputs.total }}
-      #     PASSED: ${{ steps.metrics.outputs.passed }}
-      #     FAILED: ${{ steps.metrics.outputs.failed }}
-      #     SKIPPED: ${{ steps.metrics.outputs.skipped }}
-      #     VALUE: ${{ steps.metrics.outputs.value }}
-      #   run: |
-      #     # Use default metric name if none provided
-      #     if [ -z "$METRIC_NAME" ]; then
-      #       METRIC_NAME="test_summary_v2"
-      #       echo "Metric name not provided, using default: $METRIC_NAME"
-      #     fi
-
-      #     # Push metric to Pushgateway following Prometheus format with labels
-      #     cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}
-      #     # TYPE ${METRIC_NAME} gauge
-      #     ${METRIC_NAME} ${VALUE}
-      #     EOF
-
-      #     echo "Metrics pushed to Pushgateway"
 
       # Step 7: Create prometheus.yml config file for Prometheus server to scrape Pushgateway and forward metrics to Grafana Cloud
       - name: Create Prometheus config

@@ -108,6 +108,7 @@ jobs:
           SKIPPED: ${{ env.SKIPPED }}
           FLAKY: ${{ env.FLAKY }}
           VALUE: ${{ env.FAILED }}
+          METRIC_NAME: ${{ env.METRIC_NAME}}
         run: |
           # Use default metric name if none provided
           if [ -z "$METRIC_NAME" ]; then
