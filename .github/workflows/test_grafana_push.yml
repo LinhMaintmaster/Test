@@ -120,14 +120,22 @@ jobs:
           docker logs prometheus
 
       # Step 8: Verify metrics
-      - name: Verify Prometheus Metrics
+      - name: Verify metrics were sent
+        env:
+          METRIC_NAME: ${{ steps.metrics.outputs.metric_name }}
         run: |
+          if [ -z "$METRIC_NAME" ]; then
+            METRIC_NAME="test_summary_v2"
+          fi
+
+          # Check Prometheus scrape targets to confirm Pushgateway is being scraped
           curl -s http://localhost:9090/api/v1/targets | jq .
 
+          # Query Prometheus for the metric to ensure it exists
           RESULT=$(curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq -r '.data.result | length')
 
           if [ "$RESULT" -gt 0 ]; then
-            echo "✅ Metrics are available in Prometheus"
+            echo "✅ Metrics successfully available in Prometheus"
             curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq .
           else
             echo "❌ Metrics not found in Prometheus"
