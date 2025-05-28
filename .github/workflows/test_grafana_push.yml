@@ -102,12 +102,11 @@ jobs:
         env:
           PR_ID: ${{ github.run_id }}
           PR_TITLE: ${{ github.workflow }}
-          TOTAL: ${{ env.TOTAL }}
-          PASSED: ${{ env.PASSED }}
-          FAILED: ${{ env.FAILED }}
-          SKIPPED: ${{ env.SKIPPED }}
-          FLAKY: ${{ env.FLAKY }}
-          VALUE: ${{ env.FAILED }}
+          TOTAL: ${{ steps.metrics.outputs.total }}
+          PASSED: ${{ steps.metrics.outputs.passed }}
+          FAILED: ${{ steps.metrics.outputs.failed }}
+          SKIPPED: ${{ steps.metrics.outputs.skipped }}
+          VALUE: ${{ steps.metrics.outputs.value }}
         run: |
           # Use default metric name if none provided
           if [ -z "$METRIC_NAME" ]; then
@@ -116,7 +115,7 @@ jobs:
           fi
 
           # Push metric to Pushgateway following Prometheus format with labels
-          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/pr_title/${PR_TITLE}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}/flaky/${FLAKY}
+          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/pr_title/${PR_TITLE}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}
           # TYPE ${METRIC_NAME} gauge
           ${METRIC_NAME} ${VALUE}
           EOF
