@@ -68,14 +68,12 @@ jobs:
           FLAKY: ${{ env.FLAKY }}
           VALUE: ${{ env.FAILED }}
         run: |
-          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/test_metrics/pr_id/${PR_ID}/pr_title/${PR_TITLE}
+          # Push our test metric to Pushgateway
+          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/pr_title/${PR_TITLE}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}/flaky/${FLAKY}
           # TYPE $METRIC_NAME gauge
-          $METRIC_NAME{type="total"} $TOTAL
-          $METRIC_NAME{type="passed"} $PASSED
-          $METRIC_NAME{type="failed"} $FAILED
-          $METRIC_NAME{type="skipped"} $SKIPPED
-          $METRIC_NAME{type="flaky"} $FLAKY
+          $METRIC_NAME $VALUE
           EOF
+          echo "Metrics pushed to Pushgateway"
 
       # Step 6: Create Prometheus config
       - name: Create Prometheus config
