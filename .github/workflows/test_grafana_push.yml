@@ -19,10 +19,13 @@ jobs:
         uses: actions/checkout@v3
 
       # Step 2: Install dependencies
-      - name: Install dependencies
+      - name: Install jq and curl
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq curl docker.io
+          sudo apt-get install -y jq curl
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
 
       # Step 3: Extract test results from summary.json
       - name: Extract test results from summary.json
@@ -46,10 +49,6 @@ jobs:
           echo "FLAKY=$FLAKY" >> $GITHUB_ENV
 
           echo "Test Summary - Total: $TOTAL, Passed: $PASSED, Failed: $FAILED, Skipped: $SKIPPED, Flaky: $FLAKY"
-
-      # Step 4: Setup Docker buildx (used for running Docker containers)
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v2
 
       # Step 4: Start Pushgateway container
       - name: Start Pushgateway
