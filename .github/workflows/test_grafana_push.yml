@@ -1,4 +1,4 @@
-name: Send Metrics to Grafana Cloud via Pushgateway
+name: Test Grafana Push
 
 on:
   push:
@@ -46,6 +46,10 @@ jobs:
           echo "FLAKY=$FLAKY" >> $GITHUB_ENV
 
           echo "Test Summary - Total: $TOTAL, Passed: $PASSED, Failed: $FAILED, Skipped: $SKIPPED, Flaky: $FLAKY"
+
+      # Step 4: Setup Docker buildx (used for running Docker containers)
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
 
       # Step 4: Start Pushgateway container
       - name: Start Pushgateway
