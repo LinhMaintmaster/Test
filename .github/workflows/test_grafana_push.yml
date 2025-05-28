@@ -68,11 +68,18 @@ jobs:
           FLAKY: ${{ env.FLAKY }}
           VALUE: ${{ env.FAILED }}
         run: |
-          # Push our test metric to Pushgateway
+          # Use default metric name if none provided
+          if [ -z "$METRIC_NAME" ]; then
+            METRIC_NAME="test_summary_test_v1"
+            echo "Metric name not provided, using default: $METRIC_NAME"
+          fi
+
+          # Push metric to Pushgateway following Prometheus format with labels
           cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/pr_title/${PR_TITLE}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}/flaky/${FLAKY}
-          # TYPE $METRIC_NAME gauge
-          $METRIC_NAME $VALUE
+          # TYPE ${METRIC_NAME} gauge
+          ${METRIC_NAME} ${VALUE}
           EOF
+
           echo "Metrics pushed to Pushgateway"
 
       # Step 6: Create Prometheus config
