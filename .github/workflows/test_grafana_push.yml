@@ -75,7 +75,7 @@ jobs:
           fi
 
           # Escape double quotes in PR_TITLE
-          ESCAPED_TITLE=$(echo "$PR_TITLE" | sed 's/"/\\"/g')
+          ESCAPED_TITLE=$(echo "$PR_TITLE" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
 
           # Push metric to Pushgateway following Prometheus format with labels
           # Push metric in Prometheus label format
