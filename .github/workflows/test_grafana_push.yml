@@ -121,8 +121,6 @@ jobs:
 
       # Step 8: Verify metrics
       - name: Verify metrics were sent
-        env:
-          METRIC_NAME: ${{ steps.metrics.outputs.metric_name }}
         run: |
           if [ -z "$METRIC_NAME" ]; then
             METRIC_NAME="test_summary_v2"
