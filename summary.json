@@ -1,0 +1,73 @@
+{
+  "stats": {
+    "suites": 3,
+    "tests": 10,
+    "passes": 7,
+    "failures": 2,
+    "skipped": 1,
+    "start": "2025-05-28T08:00:00.000Z",
+    "end": "2025-05-28T08:00:10.000Z",
+    "duration": 10000
+  },
+  "results": [
+    {
+      "title": "Login page loads successfully",
+      "fullTitle": "Login page loads successfully",
+      "file": "tests/login.test.js",
+      "duration": 2000,
+      "currentRetry": 0,
+      "flaky": false,
+      "err": {}
+    },
+    {
+      "title": "User can log in with valid credentials",
+      "fullTitle": "User can log in with valid credentials",
+      "file": "tests/login.test.js",
+      "duration": 2200,
+      "currentRetry": 0,
+      "flaky": false,
+      "err": {}
+    },
+    {
+      "title": "Fails with wrong password",
+      "fullTitle": "Fails with wrong password",
+      "file": "tests/login.test.js",
+      "duration": 1000,
+      "currentRetry": 1,
+      "flaky": true,
+      "err": {
+        "message": "Expected 401 status code but got 200"
+      }
+    },
+    {
+      "title": "User can logout",
+      "fullTitle": "User can logout",
+      "file": "tests/logout.test.js",
+      "duration": 800,
+      "currentRetry": 0,
+      "flaky": false,
+      "err": {}
+    },
+    {
+      "title": "This test is skipped",
+      "fullTitle": "This test is skipped",
+      "file": "tests/skipped.test.js",
+      "duration": 0,
+      "currentRetry": 0,
+      "flaky": false,
+      "err": {},
+      "skipped": true
+    },
+    {
+      "title": "Another flaky test",
+      "fullTitle": "Another flaky test",
+      "file": "tests/flaky.test.js",
+      "duration": 1500,
+      "currentRetry": 1,
+      "flaky": true,
+      "err": {
+        "message": "Timeout exceeded"
+      }
+    }
+  ]
+}
