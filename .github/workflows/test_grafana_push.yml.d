@@ -19,33 +19,33 @@ jobs:
         uses: actions/checkout@v3
 
       # Step 2: Install dependencies
-      - name: Install dependencies
+      - name: Install jq and curl
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl
 
       # # Step 3: Extract test results from summary.json
-      # - name: Extract test results from summary.json
-      #   id: extract-summary
-      #   run: |
-      #     if [ ! -f "summary.json" ]; then
-      #       echo "summary.json not found."
-      #       exit 1
-      #     fi
+      - name: Extract test results from summary.json
+        id: extract-summary
+        run: |
+          if [ ! -f "summary.json" ]; then
+            echo "summary.json not found."
+            exit 1
+          fi
 
-      #     TOTAL=$(jq '.stats.tests // 0' summary.json)
-      #     PASSED=$(jq '.stats.passes // 0' summary.json)
-      #     FAILED=$(jq '.stats.failures // 0' summary.json)
-      #     SKIPPED=$(jq '.stats.skipped // 0' summary.json)
-      #     FLAKY=$(jq '[.results[] | select(.flaky == true)] | length' summary.json)
+          TOTAL=$(jq '.stats.tests // 0' summary.json)
+          PASSED=$(jq '.stats.passes // 0' summary.json)
+          FAILED=$(jq '.stats.failures // 0' summary.json)
+          SKIPPED=$(jq '.stats.skipped // 0' summary.json)
+          FLAKY=$(jq '[.results[] | select(.flaky == true)] | length' summary.json)
 
-      #     echo "TOTAL=$TOTAL" >> $GITHUB_ENV
-      #     echo "PASSED=$PASSED" >> $GITHUB_ENV
-      #     echo "FAILED=$FAILED" >> $GITHUB_ENV
-      #     echo "SKIPPED=$SKIPPED" >> $GITHUB_ENV
-      #     echo "FLAKY=$FLAKY" >> $GITHUB_ENV
+          echo "TOTAL=$TOTAL" >> $GITHUB_ENV
+          echo "PASSED=$PASSED" >> $GITHUB_ENV
+          echo "FAILED=$FAILED" >> $GITHUB_ENV
+          echo "SKIPPED=$SKIPPED" >> $GITHUB_ENV
+          echo "FLAKY=$FLAKY" >> $GITHUB_ENV
 
-      #     echo "Test Summary - Total: $TOTAL, Passed: $PASSED, Failed: $FAILED, Skipped: $SKIPPED, Flaky: $FLAKY"
+          echo "Test Summary - Total: $TOTAL, Passed: $PASSED, Failed: $FAILED, Skipped: $SKIPPED, Flaky: $FLAKY"
 
       # Step 3: Read the metrics.json file from the repo, parse metric values and export them as outputs
       - name: Read JSON and prepare metrics
@@ -102,11 +102,12 @@ jobs:
         env:
           PR_ID: ${{ github.run_id }}
           PR_TITLE: ${{ github.workflow }}
-          TOTAL: ${{ steps.metrics.outputs.total }}
-          PASSED: ${{ steps.metrics.outputs.passed }}
-          FAILED: ${{ steps.metrics.outputs.failed }}
-          SKIPPED: ${{ steps.metrics.outputs.skipped }}
-          VALUE: ${{ steps.metrics.outputs.value }}
+          TOTAL: ${{ env.TOTAL }}
+          PASSED: ${{ env.PASSED }}
+          FAILED: ${{ env.FAILED }}
+          SKIPPED: ${{ env.SKIPPED }}
+          FLAKY: ${{ env.FLAKY }}
+          VALUE: ${{ env.FAILED }}
         run: |
           # Use default metric name if none provided
           if [ -z "$METRIC_NAME" ]; then
@@ -115,7 +116,7 @@ jobs:
           fi
 
           # Push metric to Pushgateway following Prometheus format with labels
-          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/pr_title/${PR_TITLE}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}
+          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/pr_title/${PR_TITLE}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}/flaky/${FLAKY}
           # TYPE ${METRIC_NAME} gauge
           ${METRIC_NAME} ${VALUE}
           EOF
