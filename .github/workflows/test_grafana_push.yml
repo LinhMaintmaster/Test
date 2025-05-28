@@ -9,6 +9,8 @@ on:
 jobs:
   send-metrics-fail-job:
     runs-on: ubuntu-latest
+    env:
+      METRIC_NAME: tung_summary_v1
     steps:
       # Step 1: Checkout the repository code
       - name: Checkout repository
