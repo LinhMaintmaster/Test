@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  send-metrics:
+  send-metrics-fail-job:
     runs-on: ubuntu-latest
     steps:
       # Step 1: Checkout the repository code
@@ -43,46 +43,6 @@ jobs:
 
           echo "Test Summary - Total: $TOTAL, Passed: $PASSED, Failed: $FAILED, Skipped: $SKIPPED, Flaky: $FLAKY"
 
-      # Step 3: Read the metrics.json file from the repo, parse metric values and export them as outputs
-      - name: Read JSON and prepare metrics
-        id: metrics
-        run: |
-          json_file="metrics.json"
-
-          if [ ! -f "$json_file" ]; then
-            echo "Error: $json_file not found!"
-            exit 1
-          fi
-
-          echo "Contents of $json_file:"
-          cat $json_file
-
-          metric_name=$(jq -r '.metric_name' $json_file)
-          pr_id=$(jq -r '.labels.pr_id' $json_file)
-          total=$(jq -r '.labels.total' $json_file)
-          passed=$(jq -r '.labels.passed' $json_file)
-          failed=$(jq -r '.labels.failed' $json_file)
-          skipped=$(jq -r '.labels.skipped' $json_file)
-          value=$(jq -r '.value' $json_file)
-
-          echo "Parsed values:"
-          echo "Metric Name: $metric_name"
-          echo "PR ID: $pr_id"
-          echo "Total: $total"
-          echo "Passed: $passed"
-          echo "Failed: $failed"
-          echo "Skipped: $skipped"
-          echo "Value: $value"
-
-          # Export these variables for use in later steps
-          echo "pr_id=$pr_id" >> $GITHUB_OUTPUT
-          echo "total=$total" >> $GITHUB_OUTPUT
-          echo "passed=$passed" >> $GITHUB_OUTPUT
-          echo "failed=$failed" >> $GITHUB_OUTPUT
-          echo "skipped=$skipped" >> $GITHUB_OUTPUT
-          echo "value=$value" >> $GITHUB_OUTPUT
-          echo "flaky=$value" >> $GITHUB_OUTPUT
-
       - name: Set up Docker
         uses: docker/setup-buildx-action@v2
 
@@ -96,24 +56,23 @@ jobs:
       # Step 5: Push metrics to Pushgateway
       - name: Push metrics to Pushgateway
         env:
+          METRIC_NAME: ${{ env.METRIC_NAME}}
           PR_ID: ${{ github.run_id }}
-          PR_TITLE: ${{ github.workflow }}
           TOTAL: ${{ env.TOTAL }}
           PASSED: ${{ env.PASSED }}
           FAILED: ${{ env.FAILED }}
           SKIPPED: ${{ env.SKIPPED }}
-          FLAKY: ${{ env.FLAKY }}
           VALUE: ${{ env.FAILED }}
-          METRIC_NAME: cmms_summary_test_v1
+          FLAKY: ${{ env.FLAKY }}
         run: |
           # Use default metric name if none provided
           if [ -z "$METRIC_NAME" ]; then
-            METRIC_NAME="test_summary_test_v1"
+            METRIC_NAME="test_summary_v2"
             echo "Metric name not provided, using default: $METRIC_NAME"
           fi
 
           # Push metric to Pushgateway following Prometheus format with labels
-          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/pr_title/${PR_TITLE}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}/flaky/${FLAKY}
+          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}/flaky/${FLAKY}
           # TYPE ${METRIC_NAME} gauge
           ${METRIC_NAME} ${VALUE}
           EOF
