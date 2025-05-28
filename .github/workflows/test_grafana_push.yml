@@ -74,11 +74,11 @@ jobs:
             echo "Metric name not provided, using default: $METRIC_NAME"
           fi
 
-          # Escape PR_TITLE for Prometheus label
-          ESCAPED_TITLE=$(echo "$PR_TITLE" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+          # URL encode the PR_TITLE for use in the URL
+          URL_ENCODED_TITLE=$(echo "$PR_TITLE" | jq -sRr @uri)
 
           # Push metric to Pushgateway following Prometheus format with labels
-          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/pr_title/${ESCAPED_TITLE}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}/flaky/${FLAKY}
+          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test/pr_id/${PR_ID}/pr_title/${URL_ENCODED_TITLE}/total/${TOTAL}/passed/${PASSED}/failed/${FAILED}/skipped/${SKIPPED}/flaky/${FLAKY}
           # TYPE ${METRIC_NAME} gauge
           ${METRIC_NAME} ${VALUE}
           EOF
