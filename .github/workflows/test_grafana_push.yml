@@ -9,10 +9,6 @@ on:
 jobs:
   send-metrics:
     runs-on: ubuntu-latest
-
-    env:
-      METRIC_NAME: cmms_summary_test_v1
-
     steps:
       # Step 1: Checkout the repository code
       - name: Checkout repository
@@ -108,7 +104,7 @@ jobs:
           SKIPPED: ${{ env.SKIPPED }}
           FLAKY: ${{ env.FLAKY }}
           VALUE: ${{ env.FAILED }}
-          METRIC_NAME: ${{ env.METRIC_NAME}}
+          METRIC_NAME: cmms_summary_test_v1
         run: |
           # Use default metric name if none provided
           if [ -z "$METRIC_NAME" ]; then
