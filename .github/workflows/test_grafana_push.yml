@@ -55,6 +55,10 @@ jobs:
           echo "Waiting for Pushgateway to start..."
           sleep 5
 
+      - name: Set timestamp
+        id: set_time
+        run: echo "UNIX_TIMESTAMP=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       # Step 5: Push metrics to Pushgateway
       - name: Push metrics to Pushgateway
         env:
@@ -65,7 +69,7 @@ jobs:
           PASSED: ${{ env.PASSED }}
           FAILED: ${{ env.FAILED }}
           SKIPPED: ${{ env.SKIPPED }}
-          VALUE: ${{ env.FAILED }}
+          VALUE: ${{ steps.set_time.outputs.UNIX_TIMESTAMP }}
           FLAKY: ${{ env.FLAKY }}
         run: |
           # Use default metric name if none provided
