@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main # Trigger when a PR targets 'main'
   workflow_dispatch:
 
 jobs:
@@ -63,8 +66,8 @@ jobs:
       - name: Push metrics to Pushgateway
         env:
           METRIC_NAME: ${{ env.METRIC_NAME}}
-          PR_ID: ${{ github.run_id }}
-          PR_TITLE: "[DRAFT - DO NOT REVIEW ]Feature/qa granfa"
+          PR_ID: ${{ github.event.pull_request.number }}
+          PR_TITLE: "test 02"
           TOTAL: ${{ env.TOTAL }}
           PASSED: ${{ env.PASSED }}
           FAILED: ${{ env.FAILED }}
