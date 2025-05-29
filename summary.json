@@ -1,8 +1,8 @@
 {
   "stats": {
     "suites": 3,
-    "tests": 14,
-    "passes": 11,
+    "tests": 19,
+    "passes": 16,
     "failures": 2,
     "skipped": 1,
     "start": "2025-05-28T08:00:00.000Z",
