@@ -67,7 +67,7 @@ jobs:
         env:
           METRIC_NAME: ${{ env.METRIC_NAME}}
           PR_ID: ${{ github.run_id }}
-          PR_TITLE: "[DRAFT - DO NOT REVIEW ]Feature/qa granfa"
+          PR_TITLE: "test 01"
           TOTAL: ${{ env.TOTAL }}
           PASSED: ${{ env.PASSED }}
           FAILED: ${{ env.FAILED }}
