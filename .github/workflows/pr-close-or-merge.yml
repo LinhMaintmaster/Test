@@ -43,10 +43,11 @@ jobs:
             STATUS="merged"
           fi
 
-          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/pr_closed_or_merged
+          cat <<EOF | curl --request PUT --data-binary @- http://localhost:9091/metrics/job/pr_closed_or_merged
           # TYPE ${METRIC_NAME} gauge
           ${METRIC_NAME}{pr_id="${PR_ID}",pr_title="${ESCAPED_TITLE}",status="${STATUS}"} ${TIMESTAMP}
           EOF
+
 
           echo "✅ PR #${PR_ID} was $STATUS. Metric pushed."
 
