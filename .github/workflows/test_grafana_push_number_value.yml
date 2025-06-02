@@ -63,32 +63,28 @@ jobs:
         run: echo "UNIX_TIMESTAMP=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Push metrics to Pushgateway
-      env:
-        METRIC_NAME: ${{ env.METRIC_NAME }}
-        PR_ID: ${{ github.event.pull_request.number }}
-        PR_TITLE: ${{ github.event.pull_request.title }}
-        TOTAL: ${{ env.TOTAL }}
-        PASSED: ${{ env.PASSED }}
-        FAILED: ${{ env.FAILED }}
-        SKIPPED: ${{ env.SKIPPED }}
-        FLAKY: ${{ env.FLAKY }}
-        TIMESTAMP: ${{ steps.set_time.outputs.UNIX_TIMESTAMP }}
+        env:
+          METRIC_NAME: ${{ env.METRIC_NAME }}
+          PR_ID: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          TOTAL: ${{ env.TOTAL }}
+          PASSED: ${{ env.PASSED }}
+          FAILED: ${{ env.FAILED }}
+          SKIPPED: ${{ env.SKIPPED }}
+          FLAKY: ${{ env.FLAKY }}
+          TIMESTAMP: ${{ steps.set_time.outputs.UNIX_TIMESTAMP }}
         run: |
           # Set default metric name if not provided
           METRIC_PREFIX="${METRIC_NAME:-tung_summary_v2}"
-
           # Fallback for PR_ID if empty
           if [ -z "$PR_ID" ]; then
             PR_ID="unknown"
           fi
-
           # Escape double quotes in PR_TITLE
           ESCAPED_TITLE=$(echo "$PR_TITLE" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
-
           # Define job and instance labels in the URL path
           JOB_NAME="playwright_test"
           INSTANCE="pr_${PR_ID}"
-
           # Function to push a single metric
           push_metric() {
             local metric_suffix=$1
@@ -98,14 +94,12 @@ jobs:
           ${METRIC_PREFIX}_${metric_suffix}{pr_id="${PR_ID}", pr_title="${ESCAPED_TITLE}"} ${metric_value}
           EOF
           }
-
           # Push each metric individually
           push_metric "total" "$TOTAL"
           push_metric "passed" "$PASSED"
           push_metric "failed" "$FAILED"
           push_metric "skipped" "$SKIPPED"
           push_metric "flaky" "$FLAKY"
-
           echo "✅ Metrics pushed individually with pr_id=$PR_ID"
 
       # Step 6: Create Prometheus config
