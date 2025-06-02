@@ -143,24 +143,39 @@ jobs:
           docker logs prometheus
 
       # Step 8: Verify metrics
-      - name: Verify metrics were sent
+      - name: Verify all metrics were sent
         run: |
-          if [ -z "$METRIC_NAME" ]; then
-            METRIC_NAME="tung_summary_v2"
-          fi
+          # Set default metric name if not provided
+          METRIC_NAME="${METRIC_NAME:-tung_summary_v2}"
+          METRICS=("total" "passed" "failed" "skipped" "flaky")
 
-          # Check Prometheus scrape targets to confirm Pushgateway is being scraped
+          echo "Verifying all metrics for METRIC_NAME=${METRIC_NAME}"
+
+          # Check if Prometheus is scraping Pushgateway
+          echo "🔍 Checking Prometheus scrape targets..."
           curl -s http://localhost:9090/api/v1/targets | jq .
 
-          # Query Prometheus for the metric to ensure it exists
-          RESULT=$(curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq -r '.data.result | length')
+          ALL_FOUND=true
 
-          if [ "$RESULT" -gt 0 ]; then
-            echo "✅ Metrics successfully available in Prometheus"
-            curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq .
-          else
-            echo "❌ Metrics not found in Prometheus"
+          for metric in "${METRICS[@]}"; do
+            METRIC_FULL_NAME="${METRIC_NAME}_${metric}"
+            echo "🔎 Querying Prometheus for metric: $METRIC_FULL_NAME"
+
+            RESULT=$(curl -s "http://localhost:9090/api/v1/query?query=${METRIC_FULL_NAME}" | jq -r '.data.result | length')
+
+            if [ "$RESULT" -gt 0 ]; then
+              echo "✅ Metric found: $METRIC_FULL_NAME"
+            else
+              echo "❌ Metric NOT found: $METRIC_FULL_NAME"
+              ALL_FOUND=false
+            fi
+          done
+
+          if [ "$ALL_FOUND" = false ]; then
+            echo "❌ One or more metrics are missing in Prometheus"
             exit 1
+          else
+            echo "🎉 All metrics are present in Prometheus"
           fi
 
       # Step 9: Cleanup
