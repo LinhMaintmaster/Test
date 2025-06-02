@@ -1,0 +1,165 @@
+name: Test Grafana Push
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main # Trigger when a PR targets 'main'
+  workflow_dispatch:
+
+jobs:
+  send-metrics-fail-job:
+    runs-on: ubuntu-latest
+    env:
+      METRIC_NAME: tung_summary_v2
+    steps:
+      # Step 1: Checkout the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Install dependencies
+      - name: Install jq and curl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+      # # Step 3: Extract test results from summary.json
+      - name: Extract test results from summary.json
+        id: extract-summary
+        run: |
+          if [ ! -f "summary.json" ]; then
+            echo "summary.json not found."
+            exit 1
+          fi
+
+          TOTAL=$(jq '.stats.tests // 0' summary.json)
+          PASSED=$(jq '.stats.passes // 0' summary.json)
+          FAILED=$(jq '.stats.failures // 0' summary.json)
+          SKIPPED=$(jq '.stats.skipped // 0' summary.json)
+          FLAKY=$(jq '[.results[] | select(.flaky == true)] | length' summary.json)
+
+          echo "TOTAL=$TOTAL" >> $GITHUB_ENV
+          echo "PASSED=$PASSED" >> $GITHUB_ENV
+          echo "FAILED=$FAILED" >> $GITHUB_ENV
+          echo "SKIPPED=$SKIPPED" >> $GITHUB_ENV
+          echo "FLAKY=$FLAKY" >> $GITHUB_ENV
+
+          echo "Test Summary - Total: $TOTAL, Passed: $PASSED, Failed: $FAILED, Skipped: $SKIPPED, Flaky: $FLAKY"
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
+
+      # Step 4: Start Pushgateway container
+      - name: Start Pushgateway
+        run: |
+          docker run -d --name pushgateway -p 9091:9091 prom/pushgateway:latest
+          echo "Waiting for Pushgateway to start..."
+          sleep 5
+
+      - name: Set timestamp
+        id: set_time
+        run: echo "UNIX_TIMESTAMP=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      # Step 5: Push metrics to Pushgateway
+      - name: Push metrics to Pushgateway
+        env:
+          PR_ID: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          TOTAL: ${{ env.TOTAL }}
+          PASSED: ${{ env.PASSED }}
+          FAILED: ${{ env.FAILED }}
+          SKIPPED: ${{ env.SKIPPED }}
+          FLAKY: ${{ env.FLAKY }}
+        run: |
+          METRIC_PREFIX="test_summary"
+
+          # Convert PR_ID to fallback if empty
+          if [ -z "$PR_ID" ]; then
+            PR_ID="unknown"
+          fi
+
+          # Prepare Prometheus metrics with individual values
+          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test
+          # TYPE ${METRIC_PREFIX}_total gauge
+          ${METRIC_PREFIX}_total{pr_id="$PR_ID"} $TOTAL
+          # TYPE ${METRIC_PREFIX}_passed gauge
+          ${METRIC_PREFIX}_passed{pr_id="$PR_ID"} $PASSED
+          # TYPE ${METRIC_PREFIX}_failed gauge
+          ${METRIC_PREFIX}_failed{pr_id="$PR_ID"} $FAILED
+          # TYPE ${METRIC_PREFIX}_skipped gauge
+          ${METRIC_PREFIX}_skipped{pr_id="$PR_ID"} $SKIPPED
+          # TYPE ${METRIC_PREFIX}_flaky gauge
+          ${METRIC_PREFIX}_flaky{pr_id="$PR_ID"} $FLAKY
+          EOF
+
+          echo "✅ Metrics pushed as separate values with pr_id=$PR_ID"
+
+      # Step 6: Create Prometheus config
+      - name: Create Prometheus config
+        run: |
+          cat > prometheus.yml <<EOF
+          global:
+            scrape_interval: 15s
+            evaluation_interval: 15s
+
+          scrape_configs:
+            - job_name: 'pushgateway'
+              honor_labels: true
+              static_configs:
+                - targets: ['localhost:9091']
+
+          remote_write:
+            - url: "${GRAFANA_CLOUD_URL}"
+              basic_auth:
+                username: "${GRAFANA_CLOUD_USER}"
+                password: "${GRAFANA_CLOUD_API_KEY}"
+          EOF
+
+          cat prometheus.yml
+        env:
+          GRAFANA_CLOUD_URL: ${{ secrets.GRAFANA_CLOUD_URL }}
+          GRAFANA_CLOUD_USER: ${{ secrets.GRAFANA_CLOUD_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+
+      # Step 7: Start Prometheus
+      - name: Start Prometheus
+        run: |
+          docker run -d --name prometheus --network host \
+            -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
+            prom/prometheus:latest \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --web.enable-lifecycle
+
+          echo "Waiting for Prometheus to scrape and forward metrics..."
+          sleep 30
+          docker logs prometheus
+
+      # Step 8: Verify metrics
+      - name: Verify metrics were sent
+        run: |
+          if [ -z "$METRIC_NAME" ]; then
+            METRIC_NAME="test_summary_v2"
+          fi
+
+          # Check Prometheus scrape targets to confirm Pushgateway is being scraped
+          curl -s http://localhost:9090/api/v1/targets | jq .
+
+          # Query Prometheus for the metric to ensure it exists
+          RESULT=$(curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq -r '.data.result | length')
+
+          if [ "$RESULT" -gt 0 ]; then
+            echo "✅ Metrics successfully available in Prometheus"
+            curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq .
+          else
+            echo "❌ Metrics not found in Prometheus"
+            exit 1
+          fi
+
+      # Step 9: Cleanup
+      - name: Clean up containers
+        if: always()
+        run: |
+          docker stop prometheus pushgateway || true
+          docker rm prometheus pushgateway || true
