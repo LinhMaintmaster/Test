@@ -62,9 +62,9 @@ jobs:
         id: set_time
         run: echo "UNIX_TIMESTAMP=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      # Step 5: Push metrics to Pushgateway
       - name: Push metrics to Pushgateway
         env:
+          METRIC_NAME: ${{ env.METRIC_NAME }}
           PR_ID: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           TOTAL: ${{ env.TOTAL }}
@@ -73,25 +73,35 @@ jobs:
           SKIPPED: ${{ env.SKIPPED }}
           FLAKY: ${{ env.FLAKY }}
         run: |
-          METRIC_PREFIX="test_summary"
+          # Set default metric name if not provided
+          METRIC_PREFIX="${METRIC_NAME:-tung_summary_v2}"
 
-          # Convert PR_ID to fallback if empty
+          echo " Metric Prefix: $METRIC_PREFIX"
+
+          # Fallback for PR_ID if empty
           if [ -z "$PR_ID" ]; then
             PR_ID="unknown"
           fi
 
+          # Escape double quotes in PR_TITLE
+          ESCAPED_TITLE=$(echo "$PR_TITLE" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+
+          # Define job and instance labels in the URL path
+          JOB_NAME="playwright_test"
+          INSTANCE="pr_${PR_ID}"
+
           # Prepare Prometheus metrics with individual values
-          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test
+          cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/${JOB_NAME}/instance/${INSTANCE}
           # TYPE ${METRIC_PREFIX}_total gauge
-          ${METRIC_PREFIX}_total{pr_id="$PR_ID"} $TOTAL
+          ${METRIC_PREFIX}_total{pr_id="${PR_ID}", pr_title="${ESCAPED_TITLE}"} ${TOTAL}
           # TYPE ${METRIC_PREFIX}_passed gauge
-          ${METRIC_PREFIX}_passed{pr_id="$PR_ID"} $PASSED
+          ${METRIC_PREFIX}_passed{pr_id="${PR_ID}", pr_title="${ESCAPED_TITLE}"} ${PASSED}
           # TYPE ${METRIC_PREFIX}_failed gauge
-          ${METRIC_PREFIX}_failed{pr_id="$PR_ID"} $FAILED
+          ${METRIC_PREFIX}_failed{pr_id="${PR_ID}", pr_title="${ESCAPED_TITLE}"} ${FAILED}
           # TYPE ${METRIC_PREFIX}_skipped gauge
-          ${METRIC_PREFIX}_skipped{pr_id="$PR_ID"} $SKIPPED
+          ${METRIC_PREFIX}_skipped{pr_id="${PR_ID}", pr_title="${ESCAPED_TITLE}"} ${SKIPPED}
           # TYPE ${METRIC_PREFIX}_flaky gauge
-          ${METRIC_PREFIX}_flaky{pr_id="$PR_ID"} $FLAKY
+          ${METRIC_PREFIX}_flaky{pr_id="${PR_ID}", pr_title="${ESCAPED_TITLE}"} ${FLAKY}
           EOF
 
           echo "✅ Metrics pushed as separate values with pr_id=$PR_ID"
@@ -140,7 +150,7 @@ jobs:
       - name: Verify metrics were sent
         run: |
           if [ -z "$METRIC_NAME" ]; then
-            METRIC_NAME="test_summary_v2"
+            METRIC_NAME="tung_summary_v2"
           fi
 
           # Check Prometheus scrape targets to confirm Pushgateway is being scraped
