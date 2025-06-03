@@ -13,7 +13,7 @@ jobs:
   send-metrics-fail-job:
     runs-on: ubuntu-latest
     env:
-      METRIC_NAME: tung_summary_v1
+      METRIC_NAME: tung_summary_v2
     steps:
       # Step 1: Checkout the repository code
       - name: Checkout repository
@@ -133,22 +133,24 @@ jobs:
           sleep 30
           docker logs prometheus
 
-      # Step 8: Verify metrics
-      - name: Verify metrics were sent
+      # Step 8: Verify metrics and delete from Pushgateway
+      - name: Verify metrics were sent and clean up Pushgateway
         run: |
           if [ -z "$METRIC_NAME" ]; then
             METRIC_NAME="test_summary_v2"
           fi
 
-          # Check Prometheus scrape targets to confirm Pushgateway is being scraped
-          curl -s http://localhost:9090/api/v1/targets | jq .
-
-          # Query Prometheus for the metric to ensure it exists
+          # Check if Prometheus scraped the metric
+          echo "🔍 Querying Prometheus for metric: $METRIC_NAME"
           RESULT=$(curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq -r '.data.result | length')
 
           if [ "$RESULT" -gt 0 ]; then
             echo "✅ Metrics successfully available in Prometheus"
             curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq .
+
+            # 🧹 Delete the pushed metric from Pushgateway to prevent duplicate data points
+            curl -X DELETE http://localhost:9091/metrics/job/playwright_test
+            echo "🧽 Deleted metric from Pushgateway"
           else
             echo "❌ Metrics not found in Prometheus"
             exit 1
