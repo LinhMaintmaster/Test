@@ -1,0 +1,120 @@
+name: Push Metrics When PR Closed or Merged
+
+on:
+  pull_request:
+    types:
+      - closed
+
+jobs:
+  push-on-close-or-merge:
+    runs-on: ubuntu-latest
+    env:
+      METRIC_NAME: pr_status_summary_v1
+      METRIC_NAME_DEFAULT: pr_status_summary_v0
+    steps:
+      - name: Install curl
+        run: sudo apt-get update && sudo apt-get install -y curl
+
+      - name: Set PR Metadata
+        id: pr_info
+        run: |
+          echo "PR_ID=509" >> $GITHUB_ENV
+          echo "PR_TITLE=${{ github.event.pull_request.title }}" >> $GITHUB_ENV
+          echo "PR_MERGED=${{ github.event.pull_request.merged }}" >> $GITHUB_ENV
+          echo "PR_STATE=${{ github.event.pull_request.state }}" >> $GITHUB_ENV
+          echo "TIMESTAMP=$(date +%s)" >> $GITHUB_ENV
+
+      - name: Start Pushgateway
+        run: |
+          docker run -d --name pushgateway -p 9091:9091 prom/pushgateway:latest
+          sleep 5
+
+      - name: Push PR Closed/Merged Metric
+        run: |
+          # Use default metric name if none provided
+          if [ -z "$METRIC_NAME" ]; then
+            METRIC_NAME="$METRIC_NAME_DEFAULT"
+            echo "Metric name not provided, using default: $METRIC_NAME"
+          fi
+
+          ESCAPED_TITLE=$(echo "${PR_TITLE}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+          STATUS="closed"
+          if [ "$PR_MERGED" = "true" ]; then
+            STATUS="merged"
+          fi
+
+          cat <<EOF | curl --request PUT --data-binary @- http://localhost:9091/metrics/job/pr_closed_or_merged
+          # TYPE ${METRIC_NAME} gauge
+          ${METRIC_NAME}{pr_id="${PR_ID}",pr_title="${ESCAPED_TITLE}",status="${STATUS}"} ${TIMESTAMP}
+          EOF
+
+
+          echo "✅ PR #${PR_ID} was $STATUS. Metric pushed."
+
+      # Step 6: Create Prometheus config
+      - name: Create Prometheus config
+        run: |
+          cat > prometheus.yml <<EOF
+          global:
+            scrape_interval: 15s
+            evaluation_interval: 15s
+
+          scrape_configs:
+            - job_name: 'pushgateway'
+              honor_labels: true
+              static_configs:
+                - targets: ['localhost:9091']
+
+          remote_write:
+            - url: "${GRAFANA_CLOUD_URL}"
+              basic_auth:
+                username: "${GRAFANA_CLOUD_USER}"
+                password: "${GRAFANA_CLOUD_API_KEY}"
+          EOF
+
+          cat prometheus.yml
+        env:
+          GRAFANA_CLOUD_URL: ${{ secrets.GRAFANA_CLOUD_URL }}
+          GRAFANA_CLOUD_USER: ${{ secrets.GRAFANA_CLOUD_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+
+      # Start Prometheus
+      - name: Start Prometheus
+        run: |
+          docker run -d --name prometheus --network host \
+            -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
+            prom/prometheus:latest \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --web.enable-lifecycle
+
+          echo "Waiting for Prometheus to scrape and forward metrics..."
+          sleep 30
+          docker logs prometheus
+
+      # Verify metrics
+      - name: Verify metrics were sent
+        run: |
+          if [ -z "$METRIC_NAME" ]; then
+            METRIC_NAME="$METRIC_NAME_DEFAULT"
+          fi
+
+          # Check Prometheus scrape targets to confirm Pushgateway is being scraped
+          curl -s http://localhost:9090/api/v1/targets | jq .
+
+          # Query Prometheus for the metric to ensure it exists
+          RESULT=$(curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq -r '.data.result | length')
+
+          if [ "$RESULT" -gt 0 ]; then
+            echo "✅ Metrics successfully available in Prometheus"
+            curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq .
+          else
+            echo "❌ Metrics not found in Prometheus"
+            exit 1
+          fi
+
+      # Cleanup
+      - name: Clean up containers
+        if: always()
+        run: |
+          docker stop prometheus pushgateway || true
+          docker rm prometheus pushgateway || true
