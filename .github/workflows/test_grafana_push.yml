@@ -26,6 +26,9 @@ jobs:
         with:
           name: summary-json
 
+      - name: List downloaded files
+        run: ls -R
+
       - name: Display downloaded file content
         run: |
           echo "Downloaded artifact content:"
