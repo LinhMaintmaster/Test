@@ -1,10 +1,10 @@
 name: Test Grafana Push
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["Test Grafana Push"]
+    types:
+      - completed
 
 jobs:
   send-metrics-fail-job:
@@ -22,20 +22,31 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq curl
 
+      - name: Download test summary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: test-summary-json
+
+      - name: Display downloaded file content
+        run: |
+          echo "Downloaded artifact content:"
+          cat test-summary.json
+
       # # Step 3: Extract test results from summary.json
       - name: Extract test results from summary.json
         id: extract-summary
         run: |
-          if [ ! -f "summary.json" ]; then
-            echo "summary.json not found."
+          if [ ! -f "test-summary.json" ]; then
+            echo "test-summary.json not found."
             exit 1
           fi
 
-          TOTAL=$(jq '.stats.tests // 0' summary.json)
-          PASSED=$(jq '.stats.passes // 0' summary.json)
-          FAILED=$(jq '.stats.failures // 0' summary.json)
-          SKIPPED=$(jq '.stats.skipped // 0' summary.json)
-          FLAKY=$(jq '[.results[] | select(.flaky == true)] | length' summary.json)
+          TOTAL=$(jq '.tests // 0' test-summary.json)
+          PASSED=$(jq '.passed // 0' test-summary.json)
+          FAILED=$(jq '.failed // 0' test-summary.json)
+          SKIPPED=$(jq '.skipped // 0' test-summary.json)
+          FLAKY=$(jq '.flaky // 0' test-summary.json)
+          TIMESTAMP=$(date +%s)
 
           echo "TOTAL=$TOTAL" >> $GITHUB_ENV
           echo "PASSED=$PASSED" >> $GITHUB_ENV
