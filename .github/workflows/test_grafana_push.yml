@@ -24,27 +24,27 @@ jobs:
       - name: Download test summary artifact
         uses: actions/download-artifact@v4
         with:
-          name: test-summary-json
+          name: summary-json
 
       - name: Display downloaded file content
         run: |
           echo "Downloaded artifact content:"
-          cat test-summary.json
+          cat converted-metrics.json
 
       # # Step 3: Extract test results from summary.json
-      - name: Extract test results from summary.json
+      - name: Extract test results from converted-metrics.json
         id: extract-summary
         run: |
-          if [ ! -f "test-summary.json" ]; then
-            echo "test-summary.json not found."
+          if [ ! -f "converted-metrics.json" ]; then
+            echo "converted-metrics.json not found."
             exit 1
           fi
 
-          TOTAL=$(jq '.tests // 0' test-summary.json)
-          PASSED=$(jq '.passed // 0' test-summary.json)
-          FAILED=$(jq '.failed // 0' test-summary.json)
-          SKIPPED=$(jq '.skipped // 0' test-summary.json)
-          FLAKY=$(jq '.flaky // 0' test-summary.json)
+          TOTAL=$(jq '.tests // 0' converted-metrics.json)
+          PASSED=$(jq '.passed // 0' converted-metrics.json)
+          FAILED=$(jq '.failed // 0' converted-metrics.json)
+          SKIPPED=$(jq '.skipped // 0' converted-metrics.json)
+          FLAKY=$(jq '.flaky // 0' converted-metrics.json)
           TIMESTAMP=$(date +%s)
 
           echo "TOTAL=$TOTAL" >> $GITHUB_ENV
