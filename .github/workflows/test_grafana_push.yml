@@ -2,7 +2,7 @@ name: Test Grafana Push
 
 on:
   workflow_run:
-    workflows: ["Test Grafana Push"]
+    workflows: ["ExtractAndUpload"]
     types:
       - completed
 
