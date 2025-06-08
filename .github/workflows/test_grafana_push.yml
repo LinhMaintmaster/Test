@@ -15,45 +15,46 @@ jobs:
     env:
       METRIC_NAME: tung_summary_v1
     steps:
-      # Step 1: Checkout the repository code
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: Install dependencies
       - name: Install jq and curl
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl
 
-      - name: Use GitHub token
+      - name: Get artifact ID for summary-json
+        id: get_artifact
         run: |
-          echo "Using GitHub token"
-          curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-               https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts \
-               | jq .
+          ARTIFACT_ID=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts \
+            | jq -r '.artifacts[] | select(.name == "summary-json") | .id')
 
-      - name: Debug artifact availability
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "❌ Artifact 'summary-json' not found."
+            exit 1
+          fi
+
+          echo "id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
+
+      - name: Download and extract artifact
         run: |
-          echo "Run ID: ${{ github.event.workflow_run.id }}"
-          curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-               https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts \
-               | jq .
+          curl -L \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ steps.get_artifact.outputs.id }}/zip \
+            --output artifact.zip
 
-      - name: Download test summary artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: summary-json
-          run-id: ${{ github.event.workflow_run.id }}
-
-      - name: List downloaded files
-        run: ls -R
+          unzip artifact.zip
+          ls -R
 
       - name: Display downloaded file content
         run: |
           echo "Downloaded artifact content:"
           cat converted-metrics.json
 
-      # # Step 3: Extract test results from summary.json
       - name: Extract test results from converted-metrics.json
         id: extract-summary
         run: |
@@ -67,7 +68,6 @@ jobs:
           FAILED=$(jq '.failed // 0' converted-metrics.json)
           SKIPPED=$(jq '.skipped // 0' converted-metrics.json)
           FLAKY=$(jq '.flaky // 0' converted-metrics.json)
-          TIMESTAMP=$(date +%s)
 
           echo "TOTAL=$TOTAL" >> $GITHUB_ENV
           echo "PASSED=$PASSED" >> $GITHUB_ENV
@@ -80,7 +80,6 @@ jobs:
       - name: Set up Docker
         uses: docker/setup-buildx-action@v2
 
-      # Step 4: Start Pushgateway container
       - name: Start Pushgateway
         run: |
           docker run -d --name pushgateway -p 9091:9091 prom/pushgateway:latest
@@ -91,38 +90,32 @@ jobs:
         id: set_time
         run: echo "UNIX_TIMESTAMP=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      # Step 5: Push metrics to Pushgateway
       - name: Push metrics to Pushgateway
         env:
-          METRIC_NAME: ${{ env.METRIC_NAME}}
+          METRIC_NAME: ${{ env.METRIC_NAME }}
           PR_ID: ${{ github.run_id }}
           PR_TITLE: "[DRAFT - DO NOT REVIEW ]Feature/qa granfa"
           TOTAL: ${{ env.TOTAL }}
           PASSED: ${{ env.PASSED }}
           FAILED: ${{ env.FAILED }}
           SKIPPED: ${{ env.SKIPPED }}
-          VALUE: ${{ steps.set_time.outputs.UNIX_TIMESTAMP }}
           FLAKY: ${{ env.FLAKY }}
+          VALUE: ${{ steps.set_time.outputs.UNIX_TIMESTAMP }}
         run: |
-          # Use default metric name if none provided
           if [ -z "$METRIC_NAME" ]; then
             METRIC_NAME="test_summary_v2"
             echo "Metric name not provided, using default: $METRIC_NAME"
           fi
 
-          # Escape double quotes in PR_TITLE
           ESCAPED_TITLE=$(echo "$PR_TITLE" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
 
-          # Push metric to Pushgateway following Prometheus format with labels
-          # Push metric in Prometheus label format
           cat <<EOF | curl --data-binary @- http://localhost:9091/metrics/job/playwright_test
           # TYPE ${METRIC_NAME} gauge
           ${METRIC_NAME}{pr_id="${PR_ID}",pr_title="${ESCAPED_TITLE}",total="${TOTAL}",passed="${PASSED}",failed="${FAILED}",skipped="${SKIPPED}",flaky="${FLAKY}"} ${VALUE}
           EOF
 
-          echo "Metrics pushed to Pushgateway"
+          echo "✅ Metrics pushed to Pushgateway"
 
-      # Step 6: Create Prometheus config
       - name: Create Prometheus config
         run: |
           cat > prometheus.yml <<EOF
@@ -149,7 +142,6 @@ jobs:
           GRAFANA_CLOUD_USER: ${{ secrets.GRAFANA_CLOUD_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
 
-      # Step 7: Start Prometheus
       - name: Start Prometheus
         run: |
           docker run -d --name prometheus --network host \
@@ -162,17 +154,14 @@ jobs:
           sleep 30
           docker logs prometheus
 
-      # Step 8: Verify metrics
       - name: Verify metrics were sent
         run: |
           if [ -z "$METRIC_NAME" ]; then
             METRIC_NAME="test_summary_v2"
           fi
 
-          # Check Prometheus scrape targets to confirm Pushgateway is being scraped
           curl -s http://localhost:9090/api/v1/targets | jq .
 
-          # Query Prometheus for the metric to ensure it exists
           RESULT=$(curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq -r '.data.result | length')
 
           if [ "$RESULT" -gt 0 ]; then
@@ -183,7 +172,6 @@ jobs:
             exit 1
           fi
 
-      # Step 9: Cleanup
       - name: Clean up containers
         if: always()
         run: |
