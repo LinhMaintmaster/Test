@@ -1,4 +1,4 @@
-name: Test Grafana Push
+name: 1st Run
 
 on:
   push:

@@ -1,5 +1,4 @@
-name: Test Grafana Push
-
+name: 2nd Run
 on:
   workflow_run:
     workflows: ["ExtractAndUpload"]
