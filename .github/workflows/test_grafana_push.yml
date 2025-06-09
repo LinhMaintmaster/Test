@@ -84,7 +84,21 @@ jobs:
         run: |
           docker run -d --name pushgateway -p 9091:9091 prom/pushgateway:latest
           echo "Waiting for Pushgateway to start..."
-          sleep 5
+
+          for i in {1..10}; do
+            if curl -s http://localhost:9091/metrics > /dev/null; then
+              echo "Pushgateway is ready"
+              break
+            fi
+            echo "Pushgateway not ready yet... retrying ($i/10)"
+            sleep 1
+          done
+
+          # Final check in case loop fails
+          if ! curl -s http://localhost:9091/metrics > /dev/null; then
+            echo "Pushgateway did not start in time"
+            exit 1
+          fi
 
       - name: Set timestamp
         id: set_time
