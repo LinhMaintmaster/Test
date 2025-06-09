@@ -165,24 +165,56 @@ jobs:
             --web.enable-lifecycle
 
           echo "Waiting for Prometheus to scrape and forward metrics..."
-          sleep 30
-          docker logs prometheus
+
+          METRIC_NAME=${{ env.METRIC_NAME }}
+          TIMEOUT=60
+          INTERVAL=5
+          ELAPSED=0
+
+          until curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq -e '.data.result | length > 0' > /dev/null; do
+            if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+              echo "Timed out waiting for metric ${METRIC_NAME} to appear in Prometheus"
+              exit 1
+            fi
+            echo "Still waiting... (${ELAPSED}s elapsed)"
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          echo "Metric ${METRIC_NAME} found in Prometheus."
 
       - name: Verify metrics were sent
         run: |
-          if [ -z "$METRIC_NAME" ]; then
-            METRIC_NAME="test_summary_v2"
-          fi
+          METRIC_NAME="${METRIC_NAME:-$METRIC_NAME_DEFAULT}"
 
-          curl -s http://localhost:9090/api/v1/targets | jq .
+          echo "Checking if Prometheus has scraped the metric: $METRIC_NAME"
 
-          RESULT=$(curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq -r '.data.result | length')
+          TIMEOUT=60
+          INTERVAL=5
+          ELAPSED=0
+          SUCCESS=false
 
-          if [ "$RESULT" -gt 0 ]; then
-            echo "✅ Metrics successfully available in Prometheus"
-            curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}" | jq .
-          else
-            echo "❌ Metrics not found in Prometheus"
+          # Loop until metric is found or timeout
+          while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
+            echo "Querying Prometheus... (${ELAPSED}s elapsed)"
+            RESPONSE=$(curl -s "http://localhost:9090/api/v1/query?query=${METRIC_NAME}")
+            COUNT=$(echo "$RESPONSE" | jq -r '.data.result | length')
+
+            if [ "$COUNT" -gt 0 ]; then
+              echo "Metrics successfully available in Prometheus"
+              echo "$RESPONSE" | jq .
+              SUCCESS=true
+              break
+            fi
+
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          if [ "$SUCCESS" != true ]; then
+            echo "Metrics not found in Prometheus after ${TIMEOUT}s"
+            echo "Last Prometheus response:"
+            echo "$RESPONSE" | jq .
             exit 1
           fi
 
